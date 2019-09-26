@@ -250,10 +250,10 @@ PYBIND11_MODULE(cmanta, module) {
             return py::buffer_info(
                 m.data(),                                     /* Pointer to buffer */
                 sizeof(VmbUchar_t),                           /* Size of one scalar */
-                py::format_descriptor<VmbUchar_t>::format() , /* Python struct-style format descriptor */
+                py::format_descriptor<VmbUchar_t>::format(),  /* Python descriptor */
                 2,                                            /* Number of dimensions */
                 {m.rows(), m.cols()},                         /* Buffer dimensions */
-                {sizeof(VmbUchar_t) * m.rows() ,              /* Strides (in bytes) for each index */
+                {sizeof(VmbUchar_t) * m.rows() ,              /* Strides (bytes) for each index */
                 sizeof(VmbUchar_t)}
             );
     });
