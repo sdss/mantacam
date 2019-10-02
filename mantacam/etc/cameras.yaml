@@ -1,0 +1,8 @@
+---
+
+test_camera:
+    uid: DEV_000F314D1D98
+    serial: 50-0503370748
+    connection_params:
+        device_id: DEV_000F314D1D98
+        autoconnect: true
