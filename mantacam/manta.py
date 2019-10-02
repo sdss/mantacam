@@ -7,7 +7,7 @@
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 #
 # @Last modified by: José Sánchez-Gallego (gallegoj@uw.edu)
-# @Last modified time: 2019-10-02 20:36:14
+# @Last modified time: 2019-10-02 21:50:23
 
 import asyncio
 import os
@@ -138,7 +138,6 @@ class MantaCamera(Camera):
         self.camera.GetFeatureByName('AcquisitionMode').SetValueString('SingleFrame')
         self.camera.GetFeatureByName('ExposureTimeAbs').SetValueDouble(exposure_time * 1e6)
 
-        print(self.camera.GetFeatureByName('AcquisitionMode').GetValueString())
         self.camera.GetFeatureByName('AcquisitionStart').RunCommand()
         self.log('started exposing.')
 
