@@ -2,82 +2,142 @@
 # -*- coding: utf-8 -*-
 #
 # @Author: José Sánchez-Gallego (gallegoj@uw.edu)
-# @Date: 2019-07-25
+# @Date: 2019-09-27
 # @Filename: manta.py
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 #
 # @Last modified by: José Sánchez-Gallego (gallegoj@uw.edu)
-# @Last modified time: 2019-08-03 19:39:20
+# @Last modified time: 2019-10-02 01:53:40
 
-import asyncio
+import os
 
-import numpy
+import mantacam.cmanta as cmanta
+from yaml import Loader, load
 
-import mantacam.cmanta
+from basecam.camera import Camera, CameraSystem
 
 
-class MyObserver(mantacam.cmanta.ICameraListObserver):
+CONFIG_FILE = 'etc/cameras.yaml'
+
+
+class CameraListObserver(cmanta.ICameraListObserver):
+    """A camera list observer that callbacks on events.
+
+    Parameters
+    ----------
+    on_camera_connected
+        Callback function to call when a new camera is connected.
+    on_camera_disconnected
+        Callback function to call when a new camera is disconnected.
+
+    """
+
+    def __init__(self, on_camera_connected=None, on_camera_disconnected=None):
+
+        self.on_camera_connected = on_camera_connected
+        self.on_camera_disconnected = on_camera_disconnected
+
+        super().__init__()
 
     def CameraListChanged(self, camera, reason):
-        print(camera, reason)
+
+        if reason == cmanta.UpdateTriggerType.UpdateTriggerPluggedIn:
+            self.on_camera_connected(camera.GetID())
+        elif reason == cmanta.UpdateTriggerType.UpdateTriggerPluggedOut:
+            self.on_camera_disconnected(camera.GetID())
 
 
-class MyFrameObserver(mantacam.cmanta.IFrameObserver):
+class MantaCamera(Camera):
+    """A Manta camera."""
 
-    # def __init__(self, camera):
-    #     print(camera)
-    #     mantacam.cmanta.IFrameObserver.__init__(self, camera)
+    def __init__(self, *args, **kwargs):
 
-    def FrameReceived(self, frame):
-        image = frame.GetImageInstance()
-        print(numpy.array(image, copy=False, dtype=numpy.uint8))
-        self.camera.QueueFrame(frame)
+        super().__init__(*args, **kwargs)
 
+        self.camera = None
+        self.vimba_system = self.camera_system.vimba_system
 
-my_observer = MyObserver()
+    async def _connect_internal(self, **config_params):
+        """Internal method to connect the camera."""
 
+        assert 'connection_params' in config_params, \
+            'connection_params missing from config_params.'
 
-async def main():
+        device_id = config_params['connection_params'].get('device_id', None)
+        if device_id is None:
+            raise ValueError('device_id not present in connection_params')
 
-    vs = mantacam.cmanta.VimbaSystem.GetInstance()
-    vs.Startup()
+        self.camera = self.vimba_system.GetCameraByID(device_id)
+        self.camera.Open(cmanta.VmbAccessModeType.VmbAccessModeFull)
 
-    camera = vs.GetCameras()[0]
-    camera.Open(mantacam.cmanta.VmbAccessModeType.VmbAccessModeFull)
+        return True
 
-    my_frame_observer = MyFrameObserver(camera)
+    @property
+    def uid(self):
+        """Get the unique identifier for the camera (e.g., serial number)."""
 
-    feature = camera.GetFeatureByName('GVSPAdjustPacketSize')
-    feature.RunCommand()
+        uid_from_camera = self.camera.GetID()
+        uid_from_config = self.config_params.get('uid')
 
-    feature = camera.GetFeatureByName('PayloadSize')
-    nPLS = feature.GetValueInt()
+        if uid_from_config:
+            assert uid_from_camera == uid_from_config, 'mismatch between config and camera UID.'
 
-    frames = [mantacam.cmanta.Frame(nPLS) for __ in range(3)]
-    for frame in frames:
-        frame.RegisterObserver(my_frame_observer)
-        camera.AnnounceFrame(frame)
+        return uid_from_camera
 
-    camera.StartCapture()
+    async def _expose_internal(self, exposure_time, shutter=True):
+        """Internal method to handle camera exposures."""
 
-    for frame in frames:
-        camera.QueueFrame(frame)
+        pass
 
-    acq_start = camera.GetFeatureByName('AcquisitionStart')
-    acq_stop = camera.GetFeatureByName('AcquisitionStop')
+    async def _disconnect_internal(self):
+        """Internal method to disconnect a camera."""
 
-    acq_start.RunCommand()
-    print('running')
-    await asyncio.sleep(1)
-
-    acq_stop.RunCommand()
-    print('stopped')
-    camera.EndCapture()
-
-    while True:
-        await asyncio.sleep(0.1)
+        pass
 
 
-if __name__ == '__main__':
+class MantaSystem(CameraSystem):
+    """Controls the camera system."""
 
-    asyncio.run(main())
+    vimba_system = None
+    camera_class = MantaCamera
+
+    def __init__(self, loop=None):
+
+        self.vimba_system = None
+        self.camera_list_observer = None
+
+        config = load(os.path.join(os.path.dirname(__file__), CONFIG_FILE), Loader=Loader)
+
+        super().__init__(config=config, loop=loop)
+
+    def setup_camera_system(self):
+        """Setups the Manta camera system."""
+
+        self.vimba_system = cmanta.VimbaSystem.GetInstance()
+        self.vimba_system.Startup()
+
+        self.camera_list_observer = CameraListObserver(
+            on_camera_connected=self.on_camera_connected,
+            on_camera_disconnected=self.on_camera_disconnected)
+        self.vimba_system.RegisterCameraListObserver(self.camera_list_observer)
+
+    def start_camera_poller(self):
+        """Disable start_camera_poller for this camera system.
+
+        Disables the camera poller since we will use the internal Vimba
+        camera observer.
+
+        """
+
+        raise NotImplementedError('MantaSystem does not allow starting the camera poller.')
+
+    def get_connected_cameras(self):
+        """Returns a list of camera IDs for the cameras currently connected."""
+
+        if self.vimba_system is None:
+            return []
+
+        cameras = self.vimba_system.GetCameras()
+        ids = [camera.GetID() for camera in cameras]
+
+        return ids
