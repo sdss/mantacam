@@ -207,8 +207,7 @@ PYBIND11_MODULE(cmanta, module) {
             FeaturePtr featurePtr;
             VmbErrorType err = camera.GetFeatureByName(pName, featurePtr);
             check_vmb_success(err, "GetFeatureByName");
-            // Derreferencing here seems to avoid problems.
-            return featurePtr.get();
+            return featurePtr;
         })
         .def("Open", &Camera::Open)
         .def("Close", &Camera::Close)
@@ -234,7 +233,6 @@ PYBIND11_MODULE(cmanta, module) {
             CameraPtr cameraPtr;
             VmbErrorType err = vs.GetCameraByID(cameraID, cameraPtr);
             check_vmb_success(err, "GetCameraByID");
-            // Derreferencing here seems to avoid problems.
             return cameraPtr.get();
         })
         .def("RegisterCameraListObserver", &VimbaSystem::RegisterCameraListObserver);
