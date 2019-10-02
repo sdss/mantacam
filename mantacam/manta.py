@@ -7,15 +7,16 @@
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 #
 # @Last modified by: José Sánchez-Gallego (gallegoj@uw.edu)
-# @Last modified time: 2019-10-01 18:18:59
+# @Last modified time: 2019-10-02 20:36:14
 
+import asyncio
 import os
 
 import mantacam.cmanta as cmanta
+import numpy
 from yaml import Loader, load
 
 from basecam.camera import Camera, CameraSystem
-
 
 CONFIG_FILE = 'etc/cameras.yaml'
 
@@ -47,6 +48,27 @@ class CameraListObserver(cmanta.ICameraListObserver):
             self.on_camera_disconnected(camera.GetID())
 
 
+class FrameObserver(cmanta.IFrameObserver):
+    """Notifies received frames."""
+
+    def __init__(self, camera, queue):
+
+        cmanta.IFrameObserver.__init__(self, camera)
+
+        self.queue = queue
+
+    def FrameReceived(self, frame):
+        """Called when a new frame is available."""
+
+        image = frame.GetImageInstance()
+        array = numpy.array(image, dtype=numpy.uint8, copy=False)
+
+        self.queue.put_nowait(array)
+
+        # Requeue the frame
+        self.camera.QueueFrame(frame)
+
+
 class MantaCamera(Camera):
     """A Manta camera."""
 
@@ -55,7 +77,12 @@ class MantaCamera(Camera):
         super().__init__(*args, **kwargs)
 
         self.camera = None
+        self.frame_observer = None
+        self.frames = []
+
         self.vimba_system = self.camera_system.vimba_system
+
+        self.exposure_queue = asyncio.Queue()
 
     async def _connect_internal(self, **config_params):
         """Internal method to connect the camera."""
@@ -69,6 +96,25 @@ class MantaCamera(Camera):
 
         self.camera = self.vimba_system.GetCameraByID(device_id)
         self.camera.Open(cmanta.VmbAccessModeType.VmbAccessModeFull)
+
+        self.frame_observer = FrameObserver(self.camera, self.exposure_queue)
+
+        self.camera.GetFeatureByName('GVSPAdjustPacketSize').RunCommand()
+
+        self.camera.GetFeatureByName('GVSPPacketSize').SetValueInt(1500)
+        self.camera.GetFeatureByName('GevSCPSPacketSize').SetValueInt(1500)
+
+        nPLS = self.camera.GetFeatureByName('PayloadSize').GetValueInt()
+
+        self.frames = [cmanta.Frame(nPLS) for __ in range(3)]
+        for frame in self.frames:
+            frame.RegisterObserver(self.frame_observer)
+            self.camera.AnnounceFrame(frame)
+
+        self.camera.StartCapture()
+
+        for frame in self.frames:
+            self.camera.QueueFrame(frame)
 
         return True
 
@@ -84,12 +130,34 @@ class MantaCamera(Camera):
     async def _expose_internal(self, exposure_time, shutter=True):
         """Internal method to handle camera exposures."""
 
-        pass
+        assert self.exposure_queue.empty(), \
+            'exposure queue is not empty, cannot take new exposures.'
+
+        assert self.connected, 'camera is not connected'
+
+        self.camera.GetFeatureByName('AcquisitionMode').SetValueString('SingleFrame')
+        self.camera.GetFeatureByName('ExposureTimeAbs').SetValueDouble(exposure_time * 1e6)
+
+        print(self.camera.GetFeatureByName('AcquisitionMode').GetValueString())
+        self.camera.GetFeatureByName('AcquisitionStart').RunCommand()
+        self.log('started exposing.')
+
+        await asyncio.sleep(exposure_time)
+
+        self.camera.GetFeatureByName('AcquisitionStop').RunCommand()
+        self.log('finsihed exposing.')
+
+        array = await asyncio.wait_for(self.exposure_queue.get(), timeout=1.0)
+
+        return array
 
     async def _disconnect_internal(self):
         """Internal method to disconnect a camera."""
 
-        pass
+        self.camera.EndCapture()
+        self.camera.Close()
+
+        self.connected = False
 
 
 class MantaSystem(CameraSystem):
