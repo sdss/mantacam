@@ -230,8 +230,9 @@ PYBIND11_MODULE(cmanta, module) {
         .def("GetCameraByID", [](VimbaSystem &vs, const char* cameraID) {
             CameraPtr cameraPtr;
             VmbErrorType err = vs.GetCameraByID(cameraID, cameraPtr);
+            check_vmb_success(err, "GetCameraByID");
             // Derreferencing here seems to avoid problems.
-            return py::make_tuple(err, cameraPtr.get());
+            return cameraPtr.get();
         })
         .def("RegisterCameraListObserver", &VimbaSystem::RegisterCameraListObserver);
 
