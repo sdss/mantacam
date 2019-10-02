@@ -7,7 +7,7 @@
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 #
 # @Last modified by: José Sánchez-Gallego (gallegoj@uw.edu)
-# @Last modified time: 2019-10-02 01:53:40
+# @Last modified time: 2019-10-01 18:18:59
 
 import os
 
@@ -73,16 +73,13 @@ class MantaCamera(Camera):
         return True
 
     @property
-    def uid(self):
+    def _uid(self):
         """Get the unique identifier for the camera (e.g., serial number)."""
 
-        uid_from_camera = self.camera.GetID()
-        uid_from_config = self.config_params.get('uid')
+        if not self.camera:
+            return None
 
-        if uid_from_config:
-            assert uid_from_camera == uid_from_config, 'mismatch between config and camera UID.'
-
-        return uid_from_camera
+        return self.camera.GetID()
 
     async def _expose_internal(self, exposure_time, shutter=True):
         """Internal method to handle camera exposures."""
