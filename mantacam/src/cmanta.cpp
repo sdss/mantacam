@@ -119,7 +119,10 @@ class Image {
 
     public:
         Image(VmbUchar_t *buffer, VmbUint32_t rows, VmbUint32_t cols) :
-            m_rows(rows), m_cols(cols), m_data(buffer) { }
+            m_rows(rows), m_cols(cols) {
+                m_data = new VmbUchar_t[(size_t) (m_rows * m_cols)];
+                memcpy(m_data, buffer, sizeof(VmbUchar_t) * (size_t) (m_rows * m_cols));
+            }
         VmbUchar_t *data() { return m_data; }
         VmbUint32_t rows() const { return m_rows; }
         VmbUint32_t cols() const { return m_cols; }
@@ -249,12 +252,9 @@ PYBIND11_MODULE(cmanta, module) {
     py::class_<Image>(module, "Image", py::buffer_protocol())
         .def_buffer([](Image &m) -> py::buffer_info {
             return py::buffer_info(
-                m.data(),                                     /* Pointer to buffer */
-                sizeof(VmbUchar_t),                           /* Size of one scalar */
-                py::format_descriptor<VmbUchar_t>::format(),  /* Python descriptor */
-                2,                                            /* Number of dimensions */
-                {m.rows(), m.cols()},                         /* Buffer dimensions */
-                {sizeof(VmbUchar_t) * m.rows() ,              /* Strides (bytes) for each index */
+                m.data(),                        /* Pointer to buffer */
+                {m.rows(), m.cols()},            /* Buffer dimensions */
+                {sizeof(VmbUchar_t) * m.rows(),  /* Strides (bytes) for each index */
                 sizeof(VmbUchar_t)}
             );
     });
