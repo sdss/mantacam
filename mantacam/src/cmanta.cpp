@@ -252,7 +252,7 @@ PYBIND11_MODULE(cmanta, module) {
             return py::buffer_info(
                 m.data(),                        /* Pointer to buffer */
                 {m.rows(), m.cols()},            /* Buffer dimensions */
-                {sizeof(VmbUchar_t) * m.rows(),  /* Strides (bytes) for each index */
+                {sizeof(VmbUchar_t) * m.cols(),  /* Strides (bytes) for each index */
                 sizeof(VmbUchar_t)}
             );
     });
@@ -266,7 +266,7 @@ PYBIND11_MODULE(cmanta, module) {
             frame.GetWidth(InputWidth);
             frame.GetHeight(InputHeight);
             frame.GetBuffer(buffer);
-            Image image {buffer, InputWidth, InputHeight};
+            Image image {buffer, InputHeight, InputWidth};
             return image;
         });
 
