@@ -205,3 +205,8 @@ class MantaSystem(CameraSystem):
         ids = [camera.GetID() for camera in cameras]
 
         return ids
+
+    def shutdown(self):
+        """Shuts down the system."""
+
+        self.vimba_system.Shutdown()
