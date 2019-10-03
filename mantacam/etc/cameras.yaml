@@ -6,3 +6,4 @@ test_camera:
     connection_params:
         device_id: DEV_000F314D1D98
         autoconnect: true
+    shutter: false
