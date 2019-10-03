@@ -7,16 +7,21 @@
 # @License: BSD 3-clause (http://www.opensource.org/licenses/BSD-3-Clause)
 #
 # @Last modified by: José Sánchez-Gallego (gallegoj@uw.edu)
-# @Last modified time: 2019-10-02 21:50:23
+# @Last modified time: 2019-10-03 05:48:55
 
 import asyncio
 import os
 
+import astropy.time
 import mantacam.cmanta as cmanta
 import numpy
 from yaml import Loader, load
 
 from basecam.camera import Camera, CameraSystem
+from basecam.exceptions import ExposureError
+from basecam.helpers import create_fits_image
+from basecam.notifier import CameraEvent
+
 
 CONFIG_FILE = 'etc/cameras.yaml'
 
@@ -127,7 +132,7 @@ class MantaCamera(Camera):
 
         return self.camera.GetID()
 
-    async def _expose_internal(self, exposure_time, shutter=True):
+    async def _expose_internal(self, exposure_time, **kwargs):
         """Internal method to handle camera exposures."""
 
         assert self.exposure_queue.empty(), \
@@ -138,17 +143,26 @@ class MantaCamera(Camera):
         self.camera.GetFeatureByName('AcquisitionMode').SetValueString('SingleFrame')
         self.camera.GetFeatureByName('ExposureTimeAbs').SetValueDouble(exposure_time * 1e6)
 
+        obstime = astropy.time.Time.now()
+
         self.camera.GetFeatureByName('AcquisitionStart').RunCommand()
         self.log('started exposing.')
+        self.notify(CameraEvent.EXPOSURE_EXPOSING)
 
         await asyncio.sleep(exposure_time)
 
         self.camera.GetFeatureByName('AcquisitionStop').RunCommand()
         self.log('finsihed exposing.')
+        self.notify(CameraEvent.EXPOSURE_READING)
 
-        array = await asyncio.wait_for(self.exposure_queue.get(), timeout=1.0)
+        try:
+            array = await asyncio.wait_for(self.exposure_queue.get(), timeout=1.0)
+        except asyncio.TimeoutError:
+            raise ExposureError('timed out waiting for exposure to be available.')
 
-        return array
+        image = create_fits_image(array, exposure_time, obstime=obstime)
+
+        return image
 
     async def _disconnect_internal(self):
         """Internal method to disconnect a camera."""
